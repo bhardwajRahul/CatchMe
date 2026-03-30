@@ -16,7 +16,7 @@
   <a href="../../LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-blue?style=flat" alt="License"></a>
   <img src="https://img.shields.io/badge/Python-%E2%89%A53.11-3776AB?style=flat&logo=python&logoColor=white" alt="Python">
   <img src="https://img.shields.io/badge/Platform-macOS%20%7C%20Windows-lightgrey?style=flat" alt="Platform">
-  <a href="https://hkuds.github.io/catchme"><img src="https://img.shields.io/badge/Blog-online-orange?style=flat" alt="Blog"></a>
+  <a href="https://hkuds.github.io/CatchMe"><img src="https://img.shields.io/badge/Blog-online-orange?style=flat" alt="Blog"></a>
   <img src="https://img.shields.io/badge/Report-coming%20soon-lightgrey?style=flat" alt="Report">
   <br>
   <a href="../../COMMUNICATION.md"><img src="https://img.shields.io/badge/Feishu-Group-E9DBFC?style=flat-square&logo=feishu&logoColor=white" alt="Feishu"></a>
@@ -149,7 +149,7 @@ CatchMe は、生のデジタル活動を 3 つの並行ステージで構造化
   <img src="../fig2_retrieval.png" width="800" alt="ツリー検索の流れ"/>
 </p>
 
-**📖 詳しくは**：[ブログ](https://hkuds.github.io/catchme) で設計の深掘りと技術解説を公開しています。
+**📖 詳しくは**：[ブログ](https://hkuds.github.io/CatchMe) で設計の深掘りと技術解説を公開しています。
 
 ## 🧠 LLM 設定
 

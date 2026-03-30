@@ -16,7 +16,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-blue?style=flat" alt="License"></a>
   <img src="https://img.shields.io/badge/Python-%E2%89%A53.11-3776AB?style=flat&logo=python&logoColor=white" alt="Python">
   <img src="https://img.shields.io/badge/Platform-macOS%20%7C%20Windows-lightgrey?style=flat" alt="Platform">
-  <a href="https://hkuds.github.io/catchme"><img src="https://img.shields.io/badge/Blog-online-orange?style=flat" alt="Blog"></a>
+  <a href="https://hkuds.github.io/CatchMe"><img src="https://img.shields.io/badge/Blog-online-orange?style=flat" alt="Blog"></a>
   <img src="https://img.shields.io/badge/Report-coming%20soon-lightgrey?style=flat" alt="Report">
   <br>
   <a href="./COMMUNICATION.md"><img src="https://img.shields.io/badge/Feishu-Group-E9DBFC?style=flat-square&logo=feishu&logoColor=white" alt="Feishu"></a>
@@ -151,7 +151,7 @@ CatchMe skips traditional vector search. Instead, the LLM directly navigates you
   <img src="assets/fig2_retrieval.png" width="800" alt="Tree-based Retrieval Process"/>
 </p>
 
-**📖 Learn More**: Detailed design insights and technical deep-dive available in our [blog](https://hkuds.github.io/catchme).
+**📖 Learn More**: Detailed design insights and technical deep-dive available in our [blog](https://hkuds.github.io/CatchMe/).
 
 ## 🧠 LLM Configuration
 
