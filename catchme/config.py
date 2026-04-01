@@ -8,7 +8,7 @@ from pathlib import Path
 
 @dataclass
 class Config:
-    root: Path = field(default_factory=lambda: Path(__file__).resolve().parent.parent / "data")
+    root: Path = field(default_factory=lambda: Path.home() / ".catchme")
 
     # Recorder intervals (seconds)
     window_interval: float = 1.0
