@@ -134,6 +134,9 @@ class Organizer:
         tree = self._tree_cache.get("tree")
         if tree:
             self._enqueue_closed_nodes(tree)
+            # Persist latest tree snapshot so `catchme ask` can read it immediately,
+            # even when the current session is still open.
+            self._save_tree()
 
         self._last_build_time = now
 

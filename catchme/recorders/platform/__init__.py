@@ -6,6 +6,8 @@ if sys.platform == "darwin":
     from .macos import get_active_window, get_browser_url, get_document_path
 elif sys.platform == "win32":
     from .windows import get_active_window, get_browser_url, get_document_path
+elif sys.platform.startswith("linux"):
+    from .linux import get_active_window, get_browser_url, get_document_path
 else:
 
     def get_active_window() -> dict:
