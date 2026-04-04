@@ -217,11 +217,20 @@ class LLMBudgetExhausted(Exception):
 
 
 class LLM:
-    """Thin, lazy wrapper around the OpenAI chat-completions API.
+    """Thin, lazy wrapper around the OpenAI-compatible LLM APIs.
 
     Reads ``provider``, ``api_key``, ``api_url``, ``model`` from
     ``config.json``.  Both sync and async clients are created on first use.
+
+    Set ``wire_api = "responses"`` in the ``llm`` config block to use the
+    OpenAI Responses API (``POST /v1/responses``) instead of Chat Completions.
+    Messages are automatically converted from chat-completions format to
+    the Responses API ``input_text`` / ``input_image`` format before being
+    passed to the SDK.
     """
+
+    _RETRYABLE_STATUS = {429, 502, 503, 504}
+    _MAX_RETRIES = 3
 
     def __init__(
         self,
@@ -242,20 +251,23 @@ class LLM:
             url = get_default_api_url(cfg.get("provider", "openai"))
         self._api_url = url or os.getenv("OPENAI_BASE_URL")
 
-        self._client = None
-        self._aclient = None
+        self._use_responses_api = cfg.get("wire_api") == "responses"
+
+        self._client: "OpenAI | None" = None
+        self._aclient: "AsyncOpenAI | None" = None
 
         log.info(
-            "LLM: model=%s  provider=%s  api_url=%s",
+            "LLM: model=%s  provider=%s  api_url=%s  wire=%s",
             self.model,
             cfg.get("provider", "?"),
             self._api_url or "(default)",
+            "responses" if self._use_responses_api else "completions",
         )
 
     # -- lazy clients ------------------------------------------------------
 
     @property
-    def client(self):
+    def client(self) -> "OpenAI":
         """Sync ``openai.OpenAI`` client (created on first access)."""
         if self._client is None:
             from openai import OpenAI
@@ -267,7 +279,7 @@ class LLM:
         return self._client
 
     @property
-    def aclient(self):
+    def aclient(self) -> "AsyncOpenAI":
         """Async ``openai.AsyncOpenAI`` client (created on first access)."""
         if self._aclient is None:
             from openai import AsyncOpenAI
@@ -278,7 +290,7 @@ class LLM:
             )
         return self._aclient
 
-    # -- sync completions --------------------------------------------------
+    # -- budget & usage ----------------------------------------------------
 
     @staticmethod
     def budget_remaining() -> int:
@@ -306,6 +318,126 @@ class LLM:
                 "Increase llm.max_calls in config.json or set to 0 for unlimited."
             )
 
+    @staticmethod
+    def _record_usage(usage: Any) -> None:
+        """Record token counts from either API format.
+
+        Chat Completions returns an object with ``prompt_tokens`` /
+        ``completion_tokens``.  The Responses API returns an object with
+        ``input_tokens`` / ``output_tokens``.
+        """
+        if not usage:
+            return
+        # Responses API
+        inp = getattr(usage, "input_tokens", None)
+        if inp is not None:
+            _token_tracker.record(inp, getattr(usage, "output_tokens", 0) or 0)
+            return
+        # Chat Completions
+        _token_tracker.record(
+            getattr(usage, "prompt_tokens", 0) or 0,
+            getattr(usage, "completion_tokens", 0) or 0,
+        )
+
+    # -- Responses API helpers ---------------------------------------------
+
+    @staticmethod
+    def _convert_content_for_responses(messages: list[dict]) -> list[dict]:
+        """Convert chat-completions message format to Responses API input.
+
+        Rules (empirically verified against the provider):
+
+        - **String content** — kept as-is.
+        - **Array content with images** — part types are converted:
+          ``image_url`` → ``input_image`` (URL flattened to a string),
+          ``text`` → ``input_text``.
+        - **Array content, text-only** — flattened to a plain string
+          (some providers reject text-only content arrays).
+        """
+        out: list[dict] = []
+        for msg in messages:
+            content = msg.get("content")
+            if not isinstance(content, list):
+                out.append(msg)
+                continue
+
+            has_images = any(p.get("type") == "image_url" for p in content)
+
+            if not has_images:
+                text = "\n".join(
+                    p.get("text", "") for p in content if p.get("type") == "text"
+                )
+                out.append({**msg, "content": text})
+            else:
+                parts: list[dict] = []
+                for p in content:
+                    t = p.get("type")
+                    if t == "image_url":
+                        url = p.get("image_url", "")
+                        if isinstance(url, dict):
+                            url = url.get("url", "")
+                        parts.append({"type": "input_image", "image_url": url})
+                    elif t == "text":
+                        parts.append({"type": "input_text", "text": p.get("text", "")})
+                out.append({**msg, "content": parts})
+        return out
+
+    def _complete_via_responses(self, messages: list[dict], max_tokens: int | None) -> str:
+        """Sync Responses API call with automatic retry on transient errors."""
+        converted = self._convert_content_for_responses(messages)
+        kwargs: dict[str, Any] = {"model": self.model, "input": converted}
+        if max_tokens is not None:
+            kwargs["max_output_tokens"] = max_tokens
+
+        last_exc: Exception | None = None
+        for attempt in range(self._MAX_RETRIES):
+            try:
+                resp = self.client.responses.create(**kwargs)
+                self._record_usage(resp.usage)
+                return resp.output_text or ""
+            except Exception as exc:
+                status = getattr(getattr(exc, "response", None), "status_code", 0)
+                if status not in self._RETRYABLE_STATUS:
+                    raise
+                last_exc = exc
+                delay = 2 ** attempt
+                log.warning(
+                    "responses API %d, retry %d/%d in %ds",
+                    status, attempt + 1, self._MAX_RETRIES, delay,
+                )
+                _time.sleep(delay)
+        raise last_exc  # type: ignore[misc]
+
+    async def _acomplete_via_responses(self, messages: list[dict], max_tokens: int | None) -> str:
+        """Async Responses API call with automatic retry on transient errors."""
+        import asyncio
+
+        converted = self._convert_content_for_responses(messages)
+        kwargs: dict[str, Any] = {"model": self.model, "input": converted}
+        if max_tokens is not None:
+            kwargs["max_output_tokens"] = max_tokens
+
+        last_exc: Exception | None = None
+        for attempt in range(self._MAX_RETRIES):
+            try:
+                resp = await self.aclient.responses.create(**kwargs)
+                self._record_usage(resp.usage)
+                return resp.output_text or ""
+            except Exception as exc:
+                status = getattr(getattr(exc, "response", None), "status_code", 0)
+                if status not in self._RETRYABLE_STATUS:
+                    raise
+                last_exc = exc
+                delay = 2 ** attempt
+                log.warning(
+                    "responses API %d, retry %d/%d in %ds",
+                    status, attempt + 1, self._MAX_RETRIES, delay,
+                )
+                await asyncio.sleep(delay)
+        raise last_exc  # type: ignore[misc]
+
+    # -- sync completions --------------------------------------------------
+
     def complete(
         self,
         messages: list[dict],
@@ -315,6 +447,8 @@ class LLM:
     ) -> str:
         """Blocking chat completion.  Returns the assistant's text."""
         self._check_budget()
+        if self._use_responses_api:
+            return self._complete_via_responses(messages, max_tokens)
         resp = self.client.chat.completions.create(
             model=self.model,
             messages=messages,
@@ -322,11 +456,7 @@ class LLM:
             max_tokens=max_tokens,
             **kwargs,
         )
-        if resp.usage:
-            _token_tracker.record(
-                resp.usage.prompt_tokens or 0,
-                resp.usage.completion_tokens or 0,
-            )
+        self._record_usage(resp.usage)
         return resp.choices[0].message.content or ""
 
     def stream(
@@ -361,6 +491,8 @@ class LLM:
     ) -> str:
         """Async chat completion.  Returns the assistant's text."""
         self._check_budget()
+        if self._use_responses_api:
+            return await self._acomplete_via_responses(messages, max_tokens)
         resp = await self.aclient.chat.completions.create(
             model=self.model,
             messages=messages,
@@ -368,11 +500,7 @@ class LLM:
             max_tokens=max_tokens,
             **kwargs,
         )
-        if resp.usage:
-            _token_tracker.record(
-                resp.usage.prompt_tokens or 0,
-                resp.usage.completion_tokens or 0,
-            )
+        self._record_usage(resp.usage)
         return resp.choices[0].message.content or ""
 
     async def astream(
@@ -412,11 +540,7 @@ class LLM:
         messages = [
             {
                 "role": "user",
-                "content": self._build_vision_content(
-                    prompt,
-                    image_paths,
-                    detail,
-                ),
+                "content": self._build_vision_content(prompt, image_paths, detail),
             }
         ]
         return self.complete(messages, **kwargs)
@@ -432,11 +556,7 @@ class LLM:
         messages = [
             {
                 "role": "user",
-                "content": self._build_vision_content(
-                    prompt,
-                    image_paths,
-                    detail,
-                ),
+                "content": self._build_vision_content(prompt, image_paths, detail),
             }
         ]
         return await self.acomplete(messages, **kwargs)
