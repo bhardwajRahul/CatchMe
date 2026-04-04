@@ -325,19 +325,26 @@ class LLM:
         Chat Completions returns an object with ``prompt_tokens`` /
         ``completion_tokens``.  The Responses API returns an object with
         ``input_tokens`` / ``output_tokens``.
+
+        We dispatch on ``completion_tokens`` because it is present *only*
+        in Chat Completions objects.  (Recent SDK versions add
+        ``input_tokens`` as an alias on both, so that field is unreliable
+        for dispatch.)
         """
         if not usage:
             return
-        # Responses API
-        inp = getattr(usage, "input_tokens", None)
-        if inp is not None:
-            _token_tracker.record(inp, getattr(usage, "output_tokens", 0) or 0)
-            return
-        # Chat Completions
-        _token_tracker.record(
-            getattr(usage, "prompt_tokens", 0) or 0,
-            getattr(usage, "completion_tokens", 0) or 0,
-        )
+        ct = getattr(usage, "completion_tokens", None)
+        if ct is not None:
+            # Chat Completions
+            _token_tracker.record(
+                getattr(usage, "prompt_tokens", 0) or 0, ct or 0,
+            )
+        else:
+            # Responses API
+            _token_tracker.record(
+                getattr(usage, "input_tokens", 0) or 0,
+                getattr(usage, "output_tokens", 0) or 0,
+            )
 
     # -- Responses API helpers ---------------------------------------------
 
@@ -379,6 +386,8 @@ class LLM:
                         parts.append({"type": "input_image", "image_url": url})
                     elif t == "text":
                         parts.append({"type": "input_text", "text": p.get("text", "")})
+                    else:
+                        log.debug("_convert_content_for_responses: dropping unknown part type %r", t)
                 out.append({**msg, "content": parts})
         return out
 
@@ -467,6 +476,8 @@ class LLM:
         **kwargs,
     ) -> Iterator[str]:
         """Streaming chat completion.  Yields content-delta strings."""
+        if self._use_responses_api:
+            raise NotImplementedError("streaming is not supported with wire_api='responses'")
         self._check_budget()
         resp = self.client.chat.completions.create(
             model=self.model,
