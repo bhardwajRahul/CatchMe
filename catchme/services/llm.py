@@ -393,6 +393,8 @@ class LLM:
 
     def _complete_via_responses(self, messages: list[dict], max_tokens: int | None) -> str:
         """Sync Responses API call with automatic retry on transient errors."""
+        from openai import APIStatusError
+
         converted = self._convert_content_for_responses(messages)
         kwargs: dict[str, Any] = {"model": self.model, "input": converted}
         if max_tokens is not None:
@@ -404,22 +406,24 @@ class LLM:
                 resp = self.client.responses.create(**kwargs)
                 self._record_usage(resp.usage)
                 return resp.output_text or ""
-            except Exception as exc:
-                status = getattr(getattr(exc, "response", None), "status_code", 0)
+            except APIStatusError as exc:
+                status = exc.status_code
                 if status not in self._RETRYABLE_STATUS:
                     raise
                 last_exc = exc
-                delay = 2 ** attempt
-                log.warning(
-                    "responses API %d, retry %d/%d in %ds",
-                    status, attempt + 1, self._MAX_RETRIES, delay,
-                )
-                _time.sleep(delay)
+                if attempt + 1 < self._MAX_RETRIES:
+                    delay = 2 ** attempt
+                    log.warning(
+                        "responses API %d, retry %d/%d in %ds",
+                        status, attempt + 1, self._MAX_RETRIES, delay,
+                    )
+                    _time.sleep(delay)
         raise last_exc  # type: ignore[misc]
 
     async def _acomplete_via_responses(self, messages: list[dict], max_tokens: int | None) -> str:
         """Async Responses API call with automatic retry on transient errors."""
         import asyncio
+        from openai import APIStatusError
 
         converted = self._convert_content_for_responses(messages)
         kwargs: dict[str, Any] = {"model": self.model, "input": converted}
@@ -432,17 +436,18 @@ class LLM:
                 resp = await self.aclient.responses.create(**kwargs)
                 self._record_usage(resp.usage)
                 return resp.output_text or ""
-            except Exception as exc:
-                status = getattr(getattr(exc, "response", None), "status_code", 0)
+            except APIStatusError as exc:
+                status = exc.status_code
                 if status not in self._RETRYABLE_STATUS:
                     raise
                 last_exc = exc
-                delay = 2 ** attempt
-                log.warning(
-                    "responses API %d, retry %d/%d in %ds",
-                    status, attempt + 1, self._MAX_RETRIES, delay,
-                )
-                await asyncio.sleep(delay)
+                if attempt + 1 < self._MAX_RETRIES:
+                    delay = 2 ** attempt
+                    log.warning(
+                        "responses API %d, retry %d/%d in %ds",
+                        status, attempt + 1, self._MAX_RETRIES, delay,
+                    )
+                    await asyncio.sleep(delay)
         raise last_exc  # type: ignore[misc]
 
     # -- sync completions --------------------------------------------------
