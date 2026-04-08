@@ -28,6 +28,7 @@ Usage::
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import json
 import logging
@@ -37,7 +38,11 @@ import threading
 import time as _time
 from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    # Keep OpenAI types import-time optional; runtime imports stay lazy in properties.
+    from openai import AsyncOpenAI, OpenAI
 
 log = logging.getLogger(__name__)
 
@@ -253,8 +258,8 @@ class LLM:
 
         self._use_responses_api = cfg.get("wire_api") == "responses"
 
-        self._client: "OpenAI | None" = None
-        self._aclient: "AsyncOpenAI | None" = None
+        self._client: OpenAI | None = None
+        self._aclient: AsyncOpenAI | None = None
 
         log.info(
             "LLM: model=%s  provider=%s  api_url=%s  wire=%s",
@@ -267,7 +272,7 @@ class LLM:
     # -- lazy clients ------------------------------------------------------
 
     @property
-    def client(self) -> "OpenAI":
+    def client(self) -> OpenAI:
         """Sync ``openai.OpenAI`` client (created on first access)."""
         if self._client is None:
             from openai import OpenAI
@@ -279,7 +284,7 @@ class LLM:
         return self._client
 
     @property
-    def aclient(self) -> "AsyncOpenAI":
+    def aclient(self) -> AsyncOpenAI:
         """Async ``openai.AsyncOpenAI`` client (created on first access)."""
         if self._aclient is None:
             from openai import AsyncOpenAI
@@ -337,7 +342,8 @@ class LLM:
         if ct is not None:
             # Chat Completions
             _token_tracker.record(
-                getattr(usage, "prompt_tokens", 0) or 0, ct or 0,
+                getattr(usage, "prompt_tokens", 0) or 0,
+                ct or 0,
             )
         else:
             # Responses API
@@ -371,9 +377,7 @@ class LLM:
             has_images = any(p.get("type") == "image_url" for p in content)
 
             if not has_images:
-                text = "\n".join(
-                    p.get("text", "") for p in content if p.get("type") == "text"
-                )
+                text = "\n".join(p.get("text", "") for p in content if p.get("type") == "text")
                 out.append({**msg, "content": text})
             else:
                 parts: list[dict] = []
@@ -387,7 +391,9 @@ class LLM:
                     elif t == "text":
                         parts.append({"type": "input_text", "text": p.get("text", "")})
                     else:
-                        log.debug("_convert_content_for_responses: dropping unknown part type %r", t)
+                        log.debug(
+                            "_convert_content_for_responses: dropping unknown part type %r", t
+                        )
                 out.append({**msg, "content": parts})
         return out
 
@@ -412,17 +418,19 @@ class LLM:
                     raise
                 last_exc = exc
                 if attempt + 1 < self._MAX_RETRIES:
-                    delay = 2 ** attempt
+                    delay = 2**attempt
                     log.warning(
                         "responses API %d, retry %d/%d in %ds",
-                        status, attempt + 1, self._MAX_RETRIES, delay,
+                        status,
+                        attempt + 1,
+                        self._MAX_RETRIES,
+                        delay,
                     )
                     _time.sleep(delay)
         raise last_exc  # type: ignore[misc]
 
     async def _acomplete_via_responses(self, messages: list[dict], max_tokens: int | None) -> str:
         """Async Responses API call with automatic retry on transient errors."""
-        import asyncio
         from openai import APIStatusError
 
         converted = self._convert_content_for_responses(messages)
@@ -442,10 +450,13 @@ class LLM:
                     raise
                 last_exc = exc
                 if attempt + 1 < self._MAX_RETRIES:
-                    delay = 2 ** attempt
+                    delay = 2**attempt
                     log.warning(
                         "responses API %d, retry %d/%d in %ds",
-                        status, attempt + 1, self._MAX_RETRIES, delay,
+                        status,
+                        attempt + 1,
+                        self._MAX_RETRIES,
+                        delay,
                     )
                     await asyncio.sleep(delay)
         raise last_exc  # type: ignore[misc]
