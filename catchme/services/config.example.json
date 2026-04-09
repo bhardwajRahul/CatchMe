@@ -9,6 +9,7 @@
         "api_key": "your-api-key-here",
         "api_url": "https://openrouter.ai/api/v1",
         "model": "google/gemini-3-flash-preview",
+        "extra_headers": {},
         "max_calls": 0,
         "max_images_per_cluster": 4
     },

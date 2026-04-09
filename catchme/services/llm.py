@@ -241,6 +241,7 @@ class LLM:
 
             url = get_default_api_url(cfg.get("provider", "openai"))
         self._api_url = url or os.getenv("OPENAI_BASE_URL")
+        self._extra_headers: dict[str, str] = cfg.get("extra_headers") or {}
 
         self._client = None
         self._aclient = None
@@ -263,6 +264,7 @@ class LLM:
             self._client = OpenAI(
                 api_key=self._api_key,
                 base_url=self._api_url,
+                default_headers=self._extra_headers or None,
             )
         return self._client
 
@@ -275,6 +277,7 @@ class LLM:
             self._aclient = AsyncOpenAI(
                 api_key=self._api_key,
                 base_url=self._api_url,
+                default_headers=self._extra_headers or None,
             )
         return self._aclient
 
