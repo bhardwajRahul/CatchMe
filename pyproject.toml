@@ -45,6 +45,9 @@ dev = [
     "pytest>=7.0",
     "ruff>=0.4",
 ]
+mcp = [
+    "mcp[cli]>=1.0",
+]
 
 [project.scripts]
 catchme = "catchme.run:main"

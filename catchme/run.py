@@ -463,6 +463,25 @@ def cmd_ask(query: str) -> None:
             _p(f"  {RED}error:{RST} {step.get('message', 'unknown error')}")
 
 
+# ── mcp (MCP stdio server) ──
+
+
+def cmd_mcp() -> None:
+    """Start CatchMe as an MCP stdio server for Claude Desktop, Cursor, Hermes, etc."""
+    import logging
+
+    logging.basicConfig(level=logging.WARNING, format="  %(levelname)s  %(message)s")
+
+    try:
+        from catchme.mcp_server import serve
+    except ImportError as exc:
+        _p(f"  {RED}MCP server error:{RST} {exc}")
+        _p(f"  {DIM}Install the MCP extra:{RST}  {CYAN}pip install 'catchme[mcp]'{RST}")
+        sys.exit(1)
+
+    serve()
+
+
 # ── cost ──
 
 
@@ -627,6 +646,7 @@ def _print_help() -> None:
     catchme web                Start web viewer (frontend)
     catchme web -p 9000        Start web viewer on custom port
     catchme ask -- <question>  Ask about your activity history
+    catchme mcp                Start MCP stdio server (Claude Desktop, Cursor, …)
     catchme cost               Show LLM token usage
     catchme disk               Show disk usage and event count
     catchme ram                Show RAM usage of catchme processes
@@ -638,6 +658,10 @@ def _print_help() -> None:
   {BOLD}Config{RST}
     Web port is read from {DIM}catchme/services/config.json → web.port{RST}
     Override with {CYAN}--port{RST} / {CYAN}-p{RST} flag.
+
+  {BOLD}MCP Setup (Claude Desktop){RST}
+    Add to claude_desktop_config.json:
+    {{"mcpServers": {{"catchme": {{"command": "catchme", "args": ["mcp"]}}}}}}
 """)
 
 
@@ -678,6 +702,9 @@ def main() -> None:
             _p(f"  {RED}query required.{RST}  Usage: catchme ask -- <question>")
             sys.exit(1)
         cmd_ask(query=" ".join(rest))
+
+    elif cmd == "mcp":
+        cmd_mcp()
 
     elif cmd == "cost":
         cmd_cost()
