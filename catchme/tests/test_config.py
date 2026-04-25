@@ -8,9 +8,9 @@ from catchme.config import Config
 
 
 class TestConfigDefaults:
-    def test_default_root_is_sibling_data(self):
+    def test_default_root_is_home_dot_catchme(self):
         c = Config()
-        assert c.root.name == "data"
+        assert c.root == Path.home() / ".catchme"
 
     def test_properties_are_path_objects(self, cfg):
         assert isinstance(cfg.db_path, Path)

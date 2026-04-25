@@ -238,6 +238,7 @@ For local/offline operation:
 |               | `api_key`                  | —           | API key for the provider                            |
 |               | `api_url`                  | *(auto)*    | Custom endpoint; auto-set per provider if omitted   |
 |               | `model`                    | —           | Model name (provider-specific)                      |
+|               | `wire_api`                 | *(omit)*    | Set to `"responses"` for providers that only expose `POST /v1/responses` instead of chat completions |
 |               | `max_calls`                | `0`         | Max LLM calls per cycle (`0` = unlimited; set to limit costs) |
 |               | `max_images_per_cluster`   | `5`         | Max screenshots sent per event cluster              |
 | **filter**    | `window_min_dwell`         | `3.0`       | Min window dwell time (sec) before recording        |
